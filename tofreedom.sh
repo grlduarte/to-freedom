@@ -1,5 +1,18 @@
 #!/bin/bash
 
+Help()
+{
+   # Display Help
+   echo "Este script vai te ajudar a calcular o horário exato pra cair fora."
+   echo
+   echo "sintaxe: tofreedom.sh [-c|h|e]"
+   echo "opções:"
+   echo "c     Calcula o horário de saída."
+   echo "h     Imprime este diálogo de ajuda."
+   echo "e     Muda as variáveis de configuração."
+   echo
+}
+
 # sets config file name
 config_file=.tofreedom.config
 
@@ -57,70 +70,104 @@ check_input_format() {
   fi
 }
 
-current_day=$(date +'%Y%m%d')
+# edit defined config vars
+edit() {
+  # TODO: implement this
+  echo "I should do something!"
+  exit
+}
 
-total_hours=$(read_var_config TOTAL_HOURS)
-if [ -z $total_hours ]; then
-    echo "Quantas horas você trabalha por dia?"
-    read total_hours
-    check_input_format $total_hours
-    echo TOTAL_HOURS=$total_hours >> $config_file
+main() {
+  current_day=$(date +'%Y%m%d')
+
+  total_hours=$(read_var_config TOTAL_HOURS)
+  if [ -z $total_hours ]; then
+      echo "Quantas horas você trabalha por dia?"
+      read total_hours
+      check_input_format $total_hours
+      echo TOTAL_HOURS=$total_hours >> $config_file
+  fi
+
+  echo "Que horas você começou a trabalhar?"
+  read start_time
+  check_input_format $start_time
+  start_time_formatted=$(date_from_string "$current_day $start_time" +'%H:%M %d/%m/%Y')
+  echo " - Inicio do turno às "$start_time_formatted
+
+  echo "Que horas você parou para o intervalo do almoço?"
+  read lunch_start
+  check_input_format $lunch_start
+  lunch_start_formatted=$(date_from_string "$current_day $lunch_start" +'%H:%M %d/%m/%Y')
+  echo " - Saída para o almoço às "$lunch_start_formatted
+
+  echo "Que horas você voltou do intervalo do almoço?"
+  read lunch_end
+  check_input_format $lunch_end
+  lunch_end_formatted=$(date_from_string "$current_day $lunch_end" +'%H:%M %d/%m/%Y')
+  echo " - Retorno do almoço às "$lunch_end_formatted
+
+  start_time_epoch=$(date_from_string "$current_day $start_time" "+%s")
+  lunch_start_epoch=$(date_from_string "$current_day $lunch_start" "+%s")
+  lunch_end_epoch=$(date_from_string "$current_day $lunch_end" "+%s")
+
+  morning_worked_seconds=$((lunch_start_epoch-start_time_epoch))
+  morning_worked_hours=$(calc "$morning_worked_seconds/60/60")
+
+  # check if $morning_worked_hours has decimal values
+  grep "\." <<< "$morning_worked_hours" &> /dev/null
+  if [ $? == 0 ]; then
+      morning_worked_hours_int=${morning_worked_hours%.*}
+      morning_worked_hours_dec=${morning_worked_hours#*.}
+      morning_worked_minutes=$((morning_worked_hours_dec*60))
+      echo "Você trabalhou "$morning_worked_hours_int":"${morning_worked_minutes:0:2}" horas no turno da manhã."
+  else
+      echo "Você trabalhou $morning_worked_hours:00 horas no turno da manhã."
+  fi
+
+  # convert total hours to decimal value
+  total_hours_dec_fmt=$(calc ${total_hours%:*} + $(calc ${total_hours#*:} / 60))
+
+  # calculate time remaining to end of second shift
+  remaining_second_shift_hours=$(calc "$total_hours_dec_fmt-$morning_worked_hours")
+
+  # check if remaining hours in the second shift has decimal values and formats it
+  grep "\." <<< "$remaining_second_shift_hours" &> /dev/null
+  if [ $? == 0 ]; then
+      remaining_hours_int=${remaining_second_shift_hours%.*}
+      remaining_hours_dec=${remaining_second_shift_hours#*.}
+      remaining_minutes=$((remaining_hours_dec*60))
+      echo "Você precisa trabalhar "$remaining_hours_int":"${remaining_minutes:0:2}" horas no turno da tarde!"
+  else
+      echo "você precisa trabalhar $remaining_second_shift_hours:00 horas no turno da tarde!"
+  fi
+  remaining_seconds=$(calc $remaining_second_shift_hours*60*60)
+
+  logoff_time_epoch=$((lunch_end_epoch+remaining_seconds))
+  logoff_date=$(epoch_to_date $logoff_time_epoch +'%H:%M %d/%m/%Y')
+  echo "Seu turno termina às $logoff_date"
+}
+
+# handle script options
+while getopts ":hce" option; do
+   case $option in
+      e) # edit config vars
+        edit
+        exit;;
+      c) # calculate time to log off
+        main
+        exit;;
+      h) # display Help
+         Help
+         exit;;
+      \?) # invalid option
+        echo "Opção inválida!"
+        Help
+        exit;;
+   esac
+done
+
+# shows help when script is called without params
+if [ -z $1 ]; then
+    Help
+    exit
 fi
-
-echo "Que horas você começou a trabalhar?"
-read start_time
-check_input_format $start_time
-start_time_formatted=$(date_from_string "$current_day $start_time" +'%H:%M %d/%m/%Y')
-echo " - Inicio do turno às "$start_time_formatted
-
-echo "Que horas você parou para o intervalo do almoço?"
-read lunch_start
-check_input_format $lunch_start
-lunch_start_formatted=$(date_from_string "$current_day $lunch_start" +'%H:%M %d/%m/%Y')
-echo " - Saída para o almoço às "$lunch_start_formatted
-
-echo "Que horas você voltou do intervalo do almoço?"
-read lunch_end
-check_input_format $lunch_end
-lunch_end_formatted=$(date_from_string "$current_day $lunch_end" +'%H:%M %d/%m/%Y')
-echo " - Retorno do almoço às "$lunch_end_formatted
-
-start_time_epoch=$(date_from_string "$current_day $start_time" "+%s")
-lunch_start_epoch=$(date_from_string "$current_day $lunch_start" "+%s")
-lunch_end_epoch=$(date_from_string "$current_day $lunch_end" "+%s")
-
-morning_worked_seconds=$((lunch_start_epoch-start_time_epoch))
-morning_worked_hours=$(calc "$morning_worked_seconds/60/60")
-
-# check if $morning_worked_hours has decimal values
-grep "\." <<< "$morning_worked_hours" &> /dev/null
-if [ $? == 0 ]; then
-    morning_worked_hours_int=${morning_worked_hours%.*}
-    morning_worked_hours_dec=${morning_worked_hours#*.}
-    morning_worked_minutes=$((morning_worked_hours_dec*60))
-    echo "Você trabalhou "$morning_worked_hours_int":"${morning_worked_minutes:0:2}" horas no turno da manhã."
-else
-    echo "Você trabalhou $morning_worked_hours:00 horas no turno da manhã."
-fi
-
-# convert total hours to decimal value
-total_hours_dec_fmt=$(calc ${total_hours%:*} + $(calc ${total_hours#*:} / 60))
-
-# calculate time remaining to end of second shift
-remaining_second_shift_hours=$(calc "$total_hours_dec_fmt-$morning_worked_hours")
-
-# check if remaining hours in the second shift has decimal values and formats it
-grep "\." <<< "$remaining_second_shift_hours" &> /dev/null
-if [ $? == 0 ]; then
-    remaining_hours_int=${remaining_second_shift_hours%.*}
-    remaining_hours_dec=${remaining_second_shift_hours#*.}
-    remaining_minutes=$((remaining_hours_dec*60))
-    echo "Você precisa trabalhar "$remaining_hours_int":"${remaining_minutes:0:2}" horas no turno da tarde!"
-else
-    echo "você precisa trabalhar $remaining_second_shift_hours:00 horas no turno da tarde!"
-fi
-remaining_seconds=$(calc $remaining_second_shift_hours*60*60)
-
-logoff_time_epoch=$((lunch_end_epoch+remaining_seconds))
-logoff_date=$(epoch_to_date $logoff_time_epoch +'%H:%M %d/%m/%Y')
-echo "Seu turno termina às $logoff_date"
