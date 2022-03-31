@@ -7,7 +7,7 @@ config_file=.tofreedom.config
 # $1 is variable name in .env
 read_var_config()
 {
-    echo $(grep -oP '^'$1'=\K.*' $config_file)
+    sed -nr 's/^'$1'=(.*)$/\1/p' $config_file
 }
 
 # checks whether config file exists and is readable
