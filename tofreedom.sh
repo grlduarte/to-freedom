@@ -1,5 +1,21 @@
 #!/bin/bash
 
+# sets config file name
+config_file=.tofreedom.config
+
+# reads values from config file
+# $1 is variable name in .env
+read_var_config()
+{
+    echo $(grep -oP '^'$1'=\K.*' $config_file)
+}
+
+# checks whether config file exists and is readable
+# if not, attempts to create
+if [ ! -r $config_file ]; then
+    touch $config_file && chmod u+x $config_file
+fi
+
 # checks whether the system is running gnu or bsd utils
 has_gnu_date() {
   date -d '20220330 17:00:00' +'%Y%m%d' >/dev/null 2>&1
@@ -21,7 +37,7 @@ date_from_string() {
 # $2 is the desired output format ex. "%Y%m%d %H:%M"
 epoch_to_date() {
   if has_gnu_date; then
-    echo "gnu's not unix" # todo: test correct gnu syntax
+    output_date=$(date -d @"$1" "$2")
   else
     output_date=$(date -j -f "%s" "$1" "$2")
   fi
@@ -42,6 +58,14 @@ check_input_format() {
 }
 
 current_day=$(date +'%Y%m%d')
+
+total_hours=$(read_var_config TOTAL_HOURS)
+if [ -z $total_hours ]; then
+    echo "Quantas horas você trabalha por dia?"
+    read total_hours
+    check_input_format $total_hours
+    echo TOTAL_HOURS=$total_hours >> $config_file
+fi
 
 echo "Que horas você começou a trabalhar?"
 read start_time
@@ -79,9 +103,11 @@ else
     echo "Você trabalhou $morning_worked_hours:00 horas no turno da manhã."
 fi
 
+# convert total hours to decimal value
+total_hours_dec_fmt=$(calc ${total_hours%:*} + $(calc ${total_hours#*:} / 60))
+
 # calculate time remaining to end of second shift
-total_hours=8
-remaining_second_shift_hours=$(calc "$total_hours-$morning_worked_hours")
+remaining_second_shift_hours=$(calc "$total_hours_dec_fmt-$morning_worked_hours")
 
 # check if remaining hours in the second shift has decimal values and formats it
 grep "\." <<< "$remaining_second_shift_hours" &> /dev/null
