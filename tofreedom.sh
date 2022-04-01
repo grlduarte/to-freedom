@@ -66,6 +66,17 @@ epoch_to_date() {
 # source https://unix.stackexchange.com/a/40897
 calc(){ awk "BEGIN { print $*}"; }
 
+# uses awk to round float to nearest integer
+# source https://stackoverflow.com/a/33143770/14427854
+# $1 is input number
+round_to_nearest_int() {
+  rounded=$(awk "BEGIN { v=$1; print (v==int(v) ? v : int(v+0.5)) }";)
+  # prepend a zero to number
+  left_padded="0$rounded"
+  # print only two rightmost numbers
+  echo ${left_padded: -2}
+}
+
 # verifies whether user input is in HH:MM format
 # $1 is user input
 check_input_format() {
@@ -173,7 +184,8 @@ main() {
   if [ $? == 0 ]; then
       remaining_hours_int=${remaining_second_shift_hours%.*}
       remaining_hours_dec=${remaining_second_shift_hours#*.}
-      remaining_minutes=$((remaining_hours_dec*60))
+      remaining_minutes=$(calc "0.$remaining_hours_dec*60")
+      remaining_minutes=$(round_to_nearest_int $remaining_minutes)
       echo "Você precisa trabalhar "$remaining_hours_int":"${remaining_minutes:0:2}" horas no turno da tarde!"
   else
       echo "você precisa trabalhar $remaining_second_shift_hours:00 horas no turno da tarde!"
