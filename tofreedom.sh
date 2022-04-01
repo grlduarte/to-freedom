@@ -23,6 +23,11 @@ read_var_config()
     sed -nr 's/^'$1'=(.*)$/\1/p' $config_file
 }
 
+# removes trailing and leading whitespace from $1
+trim() {
+  sed -e 's/^[[:space:]]*//' <<< $1
+}
+
 # checks whether config file exists and is readable
 # if not, attempts to create
 if [ ! -r $config_file ]; then
@@ -72,8 +77,41 @@ check_input_format() {
 
 # edit defined config vars
 edit() {
-  # TODO: implement this
-  echo "I should do something!"
+  echo "Este comando irá expor suas variáveis de configuração. Prosseguir? [s/n]"
+  read should_proceed
+  [[ $should_proceed != 's' ]] && echo "Finalizando programa..." && exit 0
+
+  counter=1
+  while read -r line; do
+    printf '%s. %s\n' "$counter" "$line"
+    let counter=counter+1
+  done < "$config_file"
+  let counter=counter-1
+
+  var_options=$(seq -s ', ' 1 1 $counter)
+
+  # remove trailing ','
+  var_options=${var_options%,*}
+  echo "Digite o número da variável que deseja editar: [ $var_options ]"
+  read edit_var_number
+  if [ $edit_var_number -lt 1 ] || [ $edit_var_number -gt $counter ]; then
+    echo "Você precisa escolher um número no intervalo [ $var_options ]"
+    exit 1
+  fi
+  # prints line by number ($edit_var_number), then prints value before equal sign 
+  chosen_var=$(sed -n $edit_var_number'p' $config_file | sed -nr 's/^(.*)=.*$/\1/p')
+  echo "Digite o novo valor de <$chosen_var>: "
+  read new_var_value
+  trimmed_new_var_value=$(trim $new_var_value)
+  [[ -z $trimmed_new_var_value ]] && echo "O novo valor não pode ser vazio!" && exit 1
+  # substitutes new value inline, creates a backup file
+  sed -i.bu "s/^$chosen_var=.*/$chosen_var=$trimmed_new_var_value/" $config_file 
+  # deletes backup file only if sed exits successfully
+  [[ $? == 0 ]] && rm $config_file.bu || (echo "Erro ao substituir valor no arquivo de configuração!" && exit 1)
+  echo "-------------"
+  echo "Novos valores"
+  echo "-------------"
+  cat $config_file
   exit
 }
 
