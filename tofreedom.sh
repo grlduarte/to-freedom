@@ -16,6 +16,9 @@ Help()
 # sets config file name
 config_file=.tofreedom.config
 
+# sets csv log file name
+csv_file=.tofreedom.csv
+
 # reads values from config file
 # $1 is variable name in .env
 read_var_config()
@@ -126,8 +129,40 @@ edit() {
   exit
 }
 
+# appends data to csv file
+# $1 is current day
+# $2 is log_in time
+# $3 is lunch_start
+# $4 is lunch_end 
+# $5 is log_off time
+log_csv() {
+  csv_header="Dia,Início,Saída Almoço,Retorno Almoço,Fim"
+  [ ! -r $csv_file ] && echo $csv_header > $csv_file
+  echo "Salvar registro do dia? [s/n]"
+  read should_save_log
+  [[ $should_save_log != 's' ]] && exit 0
+  # check if current day is already logged
+  already_logged=$(grep $1 $csv_file)
+  [ -z $already_logged ] && echo "$1","$2","$3","$4","$5" >> $csv_file && exit 0
+  echo "Você já possui um registro para o dia $1 com os dados abaixo:"
+  echo "---------------"
+  echo $csv_header
+  echo $already_logged
+  echo "---------------"
+  echo "Deseja sobrescrevê-los? [s/n]"
+  read should_overwrite
+  [[ $should_overwrite != 's' ]] && exit 0
+  # must escape all commas, colons, slashes before passing variables through sed
+  # source https://unix.stackexchange.com/a/486134
+  already_logged="$(<<< "$already_logged" sed -e 's`[,:/]`\\&`g')"
+  new_log="$(<<< "$1,$2,$3,$4,$5" sed -e 's`[,:/]`\\&`g')"
+  sed -i.bu "s{"$already_logged"{"$new_log"{" $csv_file
+  [ $? == 0 ] && (echo "Registro sobrescrito com sucesso." && rm $csv_file.bu) || (echo "Erro ao sobrescrever registro!" && exit 1)
+}
+
 main() {
   current_day=$(date +'%Y%m%d')
+  current_day_formatted=$(date +'%d/%m/%Y')
 
   total_hours=$(read_var_config TOTAL_HOURS)
   if [ -z $total_hours ]; then
@@ -140,19 +175,19 @@ main() {
   echo "Que horas você começou a trabalhar?"
   read start_time
   check_input_format $start_time
-  start_time_formatted=$(date_from_string "$current_day $start_time" +'%H:%M %d/%m/%Y')
+  start_time_formatted=$(date_from_string "$current_day $start_time" +'%H:%M')
   echo " - Inicio do turno às "$start_time_formatted
 
   echo "Que horas você parou para o intervalo do almoço?"
   read lunch_start
   check_input_format $lunch_start
-  lunch_start_formatted=$(date_from_string "$current_day $lunch_start" +'%H:%M %d/%m/%Y')
+  lunch_start_formatted=$(date_from_string "$current_day $lunch_start" +'%H:%M')
   echo " - Saída para o almoço às "$lunch_start_formatted
 
   echo "Que horas você voltou do intervalo do almoço?"
   read lunch_end
   check_input_format $lunch_end
-  lunch_end_formatted=$(date_from_string "$current_day $lunch_end" +'%H:%M %d/%m/%Y')
+  lunch_end_formatted=$(date_from_string "$current_day $lunch_end" +'%H:%M')
   echo " - Retorno do almoço às "$lunch_end_formatted
 
   start_time_epoch=$(date_from_string "$current_day $start_time" "+%s")
@@ -193,8 +228,9 @@ main() {
   remaining_seconds=$(calc $remaining_second_shift_hours*60*60)
 
   logoff_time_epoch=$((lunch_end_epoch+remaining_seconds))
-  logoff_date=$(epoch_to_date $logoff_time_epoch +'%H:%M %d/%m/%Y')
+  logoff_date=$(epoch_to_date $logoff_time_epoch +'%H:%M')
   echo "Seu turno termina às $logoff_date"
+  log_csv "$current_day_formatted" "$start_time_formatted" "$lunch_start_formatted" "$lunch_end_formatted" "$logoff_date"
 }
 
 # handle script options
